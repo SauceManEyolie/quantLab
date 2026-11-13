@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>QuantLab</title>
+<link rel="stylesheet" href="/style.css">
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+<div id="app">
+
+  <header>
+    <div class="logo">Quant<span>Lab</span></div>
+    <div class="sep"></div>
+    <input list="symlist" id="symbol" value="BTC" style="width:110px" placeholder="type a ticker"
+           title="Any ticker listed on Binance, Coinbase or Kraken — type it in">
+    <datalist id="symlist"></datalist>
+    <select id="timeframe" style="width:80px"></select>
+    <select id="days" style="width:120px">
+      <option value="30">30 days</option>
+      <option value="90">90 days</option>
+      <option value="180">6 months</option>
+      <option value="365" selected>1 year</option>
+      <option value="730">2 years</option>
+      <option value="1095">3 years</option>
+    </select>
+    <button class="btn ghost" id="refresh" style="width:auto;padding:8px 12px" title="Ignore the cache and re-download">↻</button>
+    <div class="ticker" id="ticker"></div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab" data-view="shortlist">Shortlist</button>
+    <button class="tab" data-view="guided">Guided Trade</button>
+    <button class="tab on" data-view="backtest">Backtest</button>
+    <button class="tab" data-view="compare">Compare Strategies</button>
+    <button class="tab" data-view="optimize">Optimize</button>
+    <button class="tab" data-view="radar">Radar</button>
+    <button class="tab" data-view="scan">Scanner</button>
+    <button class="tab" data-view="paper">Paper Trading</button>
+    <button class="tab" data-view="glossary">Glossary</button>
+    <button class="tab" data-view="learn">How to read this</button>
+  </nav>
+
+  <main>
+    <aside id="sidebar">
+      <h3 class="sect">Strategy</h3>
+      <label class="fld"><span>Logic</span><select id="strategy"></select></label>
+      <div class="blurb" id="blurb"></div>
+      <div id="params"></div>
+
+      <h3 class="sect">Risk &amp; Costs</h3>
+      <label class="fld"><span>Starting cash ($)</span><input type="number" id="initial_cash" value="10000" step="100"></label>
+      <div class="row">
+        <label class="fld"><span>Fee (bps)</span><input type="number" id="fee_bps" value="10" step="1"></label>
+        <label class="fld"><span>Slippage (bps)</span><input type="number" id="slippage_bps" value="5" step="1"></label>
+      </div>
+      <label class="fld"><span>Position size (% of equity)</span><input type="number" id="size_pct" value="100" step="5" min="1" max="100"></label>
+      <div class="row">
+        <label class="fld"><span>Stop loss %</span><input type="number" id="stop_loss_pct" value="0" step="0.5" min="0"></label>
+        <label class="fld"><span>Take profit %</span><input type="number" id="take_profit_pct" value="0" step="0.5" min="0"></label>
+      </div>
+      <div class="row">
+        <label class="fld"><span>Trailing stop %</span><input type="number" id="trailing_stop_pct" value="0" step="0.5" min="0"></label>
+        <label class="fld"><span>ATR stop ×</span><input type="number" id="atr_stop_mult" value="0" step="0.5" min="0"></label>
+      </div>
+      <label class="chk"><input type="checkbox" id="allow_short"> Allow short selling</label>
+      <label class="chk"><input type="checkbox" id="reenter_after_stop"> Re-enter right after a stop</label>
+
+      <h3 class="sect">Chart overlays</h3>
+      <label class="chk"><input type="checkbox" id="ov_ema" checked> Moving averages</label>
+      <label class="chk"><input type="checkbox" id="ov_bb"> Bollinger Bands</label>
+      <label class="chk"><input type="checkbox" id="ov_vwap"> VWAP</label>
+      <label class="chk"><input type="checkbox" id="ov_marks" checked> Trade markers</label>
+
+      <div style="height:14px"></div>
+      <button class="btn" id="run">Run Backtest</button>
+    </aside>
+
+    <div class="content">
+
+      <!-- ============ BACKTEST ============ -->
+      <section class="view on" id="view-backtest">
+        <div id="bt-msg"></div>
+        <div class="stats" id="stats"></div>
+        <div class="charts">
+          <div class="card">
+            <div class="hd">
+              <span id="chart-title">Price</span>
+              <div class="legend" id="chart-legend"></div>
+            </div>
+            <div class="chart" id="c-price" style="height:400px"></div>
+          </div>
+          <div class="card">
+            <div class="hd">Equity curve
+              <div class="legend">
+                <span><i class="dot" style="background:#4c8dff"></i>Strategy</span>
+                <span><i class="dot" style="background:#7b8699"></i>Buy &amp; hold</span>
+              </div>
+            </div>
+            <div class="chart" id="c-equity" style="height:200px"></div>
+          </div>
+          <div class="card">
+            <div class="hd">RSI
+              <div class="legend"><span class="muted">30 / 70 lines marked</span></div>
+            </div>
+            <div class="chart" id="c-rsi" style="height:130px"></div>
+          </div>
+          <div class="card">
+            <div class="hd">MACD</div>
+            <div class="chart" id="c-macd" style="height:130px"></div>
+          </div>
+        </div>
+        <div class="tblwrap">
+          <table id="trades"><thead></thead><tbody></tbody></table>
+        </div>
+      </section>
+
+      <!-- ============ COMPARE ============ -->
+      <section class="view" id="view-compare">
+        <div class="notice ok">
+          Runs every strategy on the same data with default settings. The column that matters most is
+          <b>vs Buy&amp;Hold</b> — if it's negative, the strategy lost to simply buying and doing nothing.
+        </div>
+        <div style="padding:0 10px 10px"><button class="btn" id="run-compare" style="width:200px">Run Comparison</button></div>
+        <div id="compare-out" class="tblwrap"></div>
+      </section>
+
+      <!-- ============ OPTIMIZE ============ -->
+      <section class="view" id="view-optimize">
+        <div class="notice warn">
+          <b>Read this before you trust any result here.</b> Optimizing on 70% of the data and checking the
+          other 30% is the only thing separating a real edge from a curve-fitted fantasy. If the
+          out-of-sample column is much worse than in-sample, your "best" settings are just memorized noise.
+        </div>
+        <div style="padding:0 10px 10px" id="opt-controls"></div>
+        <div id="optimize-out" class="tblwrap"></div>
+      </section>
+
+      <!-- ============ SCANNER ============ -->
+      <section class="view" id="view-scan">
+        <div class="notice ok">
+          Scores a basket of coins on current conditions: trend, RSI, MACD turn, ADX strength, volume spikes.
+          It's a shortlist of what to look at — not a list of what to buy.
+        </div>
+        <div style="padding:0 10px 10px;display:flex;gap:8px;align-items:end">
+          <label class="fld" style="width:120px;margin:0"><span>Timeframe</span><select id="scan-tf"></select></label>
+          <button class="btn" id="run-scan" style="width:160px">Scan Market</button>
+        </div>
+        <div id="scan-out" class="tblwrap"></div>
+      </section>
+
+      <!-- ============ SHORTLIST ============ -->
+      <section class="view" id="view-shortlist">
+        <div class="notice ok" style="margin:12px 10px">
+          <b>Ranked candidates, not recommendations.</b> Six measurable factors, weighted, scored
+          0–100 — and you can see exactly how many points each factor contributed to every coin.
+          The same formula is registered as the <b>Quality Score</b> strategy, so you can backtest
+          the ranking rule itself before trusting what it says about today. A shortlist you can
+          falsify beats a tip you can't.
+        </div>
+
+        <div style="padding:0 10px 10px;display:flex;gap:8px;align-items:end;flex-wrap:wrap">
+          <label class="fld" style="width:100px;margin:0"><span>Timeframe</span><select id="s-tf"></select></label>
+          <label class="fld" style="width:90px;margin:0"><span>Show top</span>
+            <select id="s-top"><option>3</option><option selected>5</option><option>10</option></select></label>
+          <label class="chk" style="margin:0 6px 8px"><input type="checkbox" id="s-news" checked> Include news attention</label>
+          <button class="btn" id="s-run" style="width:170px">Rank the Market</button>
+          <button class="btn ghost" id="s-verify" style="width:210px">Backtest this formula</button>
+        </div>
+
+        <div id="s-out" style="padding:0 10px 30px"></div>
+      </section>
+
+      <!-- ============ GUIDED TRADE ============ -->
+      <section class="view" id="view-guided">
+        <div class="notice ok" style="margin:12px 10px">
+          <b>Every trade needs four numbers.</b> Most people can only produce the first one, which is
+          why trading feels confusing. Pick a coin below and this fills in all four — what to buy,
+          how much, where you're wrong, and where you're done — with a sentence explaining each.
+          It's all paper money, so the only thing you can lose is a misconception.
+        </div>
+
+        <div style="padding:0 10px 10px;display:flex;gap:8px;align-items:end;flex-wrap:wrap">
+          <label class="fld" style="width:130px;margin:0"><span>Coin</span>
+            <input list="symlist" id="g-symbol" value="BTC" placeholder="type a ticker"></label>
+          <label class="fld" style="width:210px;margin:0"><span>Strategy to check against</span><select id="g-strategy"></select></label>
+          <label class="fld" style="width:90px;margin:0"><span>Timeframe</span><select id="g-tf"></select></label>
+          <button class="btn" id="g-plan" style="width:160px">Plan the Trade</button>
+          <button class="btn ghost" id="g-toggle-risk" style="width:150px">Risk settings</button>
+        </div>
+
+        <div id="g-risk" style="display:none;padding:0 10px 12px">
+          <div class="card"><div class="hd">Your risk settings — set these once</div>
+            <div style="padding:12px;display:flex;gap:16px;flex-wrap:wrap">
+              <label class="fld" style="width:210px"><span>Risk per trade (% of account)</span>
+                <input type="number" id="r-risk" value="2" step="0.5" min="0.1" max="100">
+                <span class="muted small">How much you're willing to lose if the stop hits. Pros use 1–2%.</span></label>
+              <label class="fld" style="width:210px"><span>Stop distance (× ATR)</span>
+                <input type="number" id="r-atr" value="2" step="0.5" min="0.5" max="10">
+                <span class="muted small">How far below entry the stop sits, in average-candle-sizes. 2 is standard.</span></label>
+              <label class="fld" style="width:210px"><span>Target (× amount risked)</span>
+                <input type="number" id="r-target" value="2" step="0.5" min="0.5" max="10">
+                <span class="muted small">2 means you aim to make twice what you're risking.</span></label>
+              <label class="fld" style="width:210px"><span>Max position (% of account)</span>
+                <input type="number" id="r-max" value="25" step="5" min="1" max="100">
+                <span class="muted small">Hard cap so one bet can't dominate the portfolio.</span></label>
+              <div style="align-self:end"><button class="btn" id="r-save" style="width:130px">Save</button></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="g-out" style="padding:0 10px 30px"></div>
+      </section>
+
+      <!-- ============ PAPER TRADING ============ -->
+      <section class="view" id="view-paper">
+        <div id="paper-msg"></div>
+        <div class="stats" id="paper-stats"></div>
+
+        <div style="display:flex;gap:10px;padding:0 10px 10px;align-items:flex-start;flex-wrap:wrap">
+          <div class="card" style="flex:0 0 300px">
+            <div class="hd">New trade</div>
+            <div style="padding:12px">
+              <div class="row">
+                <label class="fld"><span>Coin</span>
+                  <input list="symlist" id="p-symbol" value="BTC" placeholder="type a ticker"></label>
+                <label class="fld"><span>Amount ($)</span><input type="number" id="p-usd" value="1000" step="100"></label>
+              </div>
+              <label class="fld"><span>Why are you taking this trade?</span>
+                <input type="text" id="p-reason" placeholder="e.g. RSI 28 + still above 200 EMA"></label>
+              <label class="fld"><span>Conviction (1 = coin flip, 5 = certain)</span>
+                <select id="p-conf">
+                  <option value="1">1 — barely an idea</option>
+                  <option value="2">2 — mild lean</option>
+                  <option value="3" selected>3 — decent setup</option>
+                  <option value="4">4 — strong setup</option>
+                  <option value="5">5 — best I've seen</option>
+                </select></label>
+              <button class="btn" id="p-buy">Buy</button>
+              <div class="muted small" style="margin-top:9px">
+                The reason and conviction are the point. They're what let the scorecard tell you
+                whether your judgement is worth anything.
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="flex:1;min-width:340px">
+            <div class="hd">What your strategy says right now
+              <div class="legend"><span class="muted" id="p-sig-label"></span></div>
+            </div>
+            <div style="padding:10px 12px;display:flex;gap:8px;align-items:end;flex-wrap:wrap">
+              <label class="fld" style="width:190px;margin:0"><span>Strategy</span><select id="p-strategy"></select></label>
+              <label class="fld" style="width:90px;margin:0"><span>Timeframe</span><select id="p-tf"></select></label>
+              <label class="fld" style="flex:1;min-width:170px;margin:0"><span>Watchlist (comma separated)</span>
+                <input type="text" id="p-watch" placeholder="BTC, ETH, SOL"></label>
+              <button class="btn" id="p-signals" style="width:130px">Check Signals</button>
+            </div>
+            <div id="p-signals-out" style="padding:0 12px 12px"></div>
+          </div>
+        </div>
+
+        <div class="tblwrap"><div id="p-positions"></div></div>
+        <div class="tblwrap"><div id="p-score"></div></div>
+        <div class="tblwrap"><div id="p-trades"></div></div>
+        <div style="padding:0 10px 30px">
+          <button class="btn ghost" id="p-reset" style="width:220px">Reset portfolio</button>
+        </div>
+      </section>
+
+      <!-- ============ RADAR ============ -->
+      <section class="view" id="view-radar">
+        <div style="padding:12px 10px 0;display:flex;gap:8px;align-items:end;flex-wrap:wrap">
+          <label class="fld" style="flex:1;min-width:220px;max-width:400px;margin:0">
+            <span>Filter headlines (comma separated)</span>
+            <input type="text" id="n-query" placeholder="solana, etf, unlock, airdrop"></label>
+          <label class="fld" style="width:120px;margin:0"><span>Window</span>
+            <select id="n-hours">
+              <option value="6">6 hours</option><option value="24">24 hours</option>
+              <option value="48" selected>48 hours</option><option value="168">1 week</option>
+            </select></label>
+          <button class="btn" id="n-refresh" style="width:150px">Refresh Feeds</button>
+          <div class="ticker" id="n-status"></div>
+        </div>
+
+        <nav class="tabs" style="margin:12px 10px 0;border-radius:8px 8px 0 0;border:1px solid var(--line);border-bottom:none">
+          <button class="tab on" data-sub="news">Headlines</button>
+          <button class="tab" data-sub="narr">What's being talked about</button>
+          <button class="tab" data-sub="trend">Trending</button>
+          <button class="tab" data-sub="pools">New Solana tokens</button>
+        </nav>
+
+        <div style="padding:0 10px 30px">
+          <div id="sub-news" class="subview"></div>
+          <div id="sub-narr" class="subview" style="display:none"></div>
+          <div id="sub-trend" class="subview" style="display:none"></div>
+          <div id="sub-pools" class="subview" style="display:none"></div>
+        </div>
+      </section>
+
+      <!-- ============ GLOSSARY ============ -->
+      <section class="view" id="view-glossary">
+        <div style="padding:18px 20px 0;max-width:1100px">
+          <h2 style="margin-bottom:6px">Every term, in plain English</h2>
+          <p class="muted" style="margin-bottom:4px">
+            The unlocking idea: <b>every indicator here is just a function over a rolling window of
+            numbers.</b> There's no hidden theory. RSI is about eight lines of pandas — you can read
+            all of them in <code>indicators.py</code> in ten minutes. The finance world gives these
+            functions intimidating names; the maths is not intimidating.
+          </p>
+          <p class="muted" style="margin-bottom:16px">
+            Terms are also <span class="gl" data-gl="indicator">underlined like this</span> throughout
+            the app — hover any of them for the short version without leaving what you're doing.
+          </p>
+          <input type="text" id="gl-search" placeholder="Search terms…" style="max-width:340px;margin-bottom:6px">
+        </div>
+        <div id="gl-list" style="padding:0 20px 40px;max-width:1100px"></div>
+      </section>
+
+      <!-- ============ LEARN ============ -->
+      <section class="view" id="view-learn">
+        <div style="max-width:820px;padding:22px;line-height:1.75">
+          <h2 style="margin-bottom:6px">How to read this thing</h2>
+          <p class="muted" style="margin-bottom:22px">Plain English, no finance degree required.</p>
+
+          <h3 style="color:var(--accent);margin:20px 0 8px">The one number that decides everything</h3>
+          <p><b>vs Buy &amp; Hold.</b> Bitcoin went up a lot over most historical windows. A strategy that
+          returns 40% sounds great until you notice buy-and-hold returned 90% in the same period — you did
+          more work, paid more fees, took more risk, and made less. Beating buy-and-hold is the entire game.
+          Most strategies don't. That's not a bug in the app; that's the actual result, and knowing it
+          before you risk money is worth more than any signal.</p>
+
+          <h3 style="color:var(--accent);margin:20px 0 8px">Max drawdown &gt; total return</h3>
+          <p>Max drawdown is the worst peak-to-trough fall your account took. A strategy that returns 200%
+          with a 70% drawdown is one you will abandon at the bottom — everyone does. Drawdown is the number
+          that predicts whether you'll actually still be running the strategy in six months.</p>
+
+          <h3 style="color:var(--accent);margin:20px 0 8px">Win rate is the most misleading stat here</h3>
+          <p>A 90% win rate means nothing if the 10% of losses are each 20× the size of a win. Look at
+          <b>profit factor</b> (gross wins ÷ gross losses — above 1.5 is decent, above 2 is strong) and
+          <b>expectancy</b> (average dollars per trade). Trend strategies often win 35% of the time and make
+          money anyway.</p>
+
+          <h3 style="color:var(--accent);margin:20px 0 8px">Sharpe ratio</h3>
+          <p>Return per unit of bumpiness. Below 1 is weak, 1–2 is respectable, above 2 in a backtest usually
+          means you've overfit something. Be suspicious of your own good results.</p>
+
+          <h3 style="color:var(--accent);margin:20px 0 8px">Why the numbers here are lower than other tools</h3>
+          <ul style="margin:8px 0 0 20px">
+            <li>Signals fire on a bar's close and fill at the <b>next</b> bar's open. You never get the price that made you want to trade.</li>
+            <li>Fees are charged on both sides of every round trip.</li>
+            <li>Slippage assumes you buy a little high and sell a little low.</li>
+            <li>When a bar could have hit both your stop and your target, we assume the stop hit first.</li>
+            <li>The still-forming candle is dropped, so no partial-future data leaks in.</li>
+          </ul>
+          <p style="margin-top:10px">Every one of those is a place where sloppier backtesters quietly
+          manufacture profit. The pessimism is the feature.</p>
+
+          <h3 style="color:var(--accent);margin:20px 0 8px">The overfitting trap</h3>
+          <p>Test enough parameter combinations and some will look spectacular by pure chance. That's what the
+          Optimize tab's in-sample/out-of-sample split is for. If parameters that shine on the first 70% of
+          history fall apart on the last 30%, you found a coincidence, not an edge. This is the single most
+          common way people lose money with backtesting.</p>
+
+          <h3 style="color:var(--accent);margin:20px 0 8px">What this tool cannot tell you</h3>
+          <p>It uses closed candles, so it can't model intrabar order fills, order-book depth, funding rates,
+          exchange outages, or your own behaviour under stress. Backtests are a filter for <i>bad</i> ideas,
+          not proof of good ones. A strategy that fails here will almost certainly fail live. One that
+          succeeds here has merely earned the right to be paper-traded next.</p>
+
+          <div class="notice warn" style="margin:24px 0 0">
+            Nothing in this application is financial advice, and past performance genuinely does not predict
+            future returns. Crypto is volatile enough to lose the entire position. Treat every number here as
+            a research output, not a recommendation.
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+<script src="/glossary.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+.Rhistory
+
+# macOS
+.DS_Store
+
+# Local data & personal state (re-created when the app runs)
+cache/
+paper_state.json
+briefing.md
+*.log
+
+# Secrets
+.env
+*.key
